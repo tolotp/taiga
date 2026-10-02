@@ -1,0 +1,66 @@
+name: Build Taiga for Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          ref: develop
+
+      - name: Instalar Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtimageformats
+          cache: true
+
+      - name: Configurar CMake
+        shell: pwsh
+        run: |
+          cmake -B build/msvc-x64 `
+            -DCMAKE_BUILD_TYPE=msvc-x64-release `
+            -DCMAKE_PREFIX_PATH="$env:Qt6_DIR"
+
+      - name: Compilar Taiga
+        shell: pwsh
+        run: |
+          cmake --build build/msvc-x64 `
+            --config RelWithDebInfo `
+            --target taiga
+
+      - name: Copiar dependencias de Qt
+        shell: pwsh
+        run: |
+          $exe = "bin/RelWithDebInfo/Taiga.exe"
+
+          if (!(Test-Path $exe)) {
+            Write-Error "No se encontró $exe"
+          }
+
+          windeployqt `
+            --release `
+            --no-translations `
+            $exe
+
+      - name: Crear ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "bin/RelWithDebInfo/*" `
+            -DestinationPath "Taiga-windows-x64.zip"
+
+      - name: Subir resultado
+        uses: actions/upload-artifact@v4
+        with:
+          name: Taiga-windows-x64
+          path: Taiga-windows-x64.zip
