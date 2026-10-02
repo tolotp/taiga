@@ -14,8 +14,6 @@ jobs:
           ref: develop
           submodules: recursive
 
-      # Equivale a abrir Developer PowerShell de Visual Studio.
-      # No modifica los comandos de compilación del repositorio.
       - name: Preparar MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -30,20 +28,46 @@ jobs:
           python -m aqt install-qt `
             windows desktop 6.10.3 `
             win64_msvc2022_64 `
-            -m qtimageformats
+            -m qtimageformats `
+            --outputdir C:\Qt
 
-      - name: Configurar QTDIR
+      - name: Encontrar Qt
         shell: pwsh
         run: |
-          "QTDIR=C:\Qt\6.10.3\msvc2022_64" >> $env:GITHUB_ENV
+          $config = Get-ChildItem `
+            -Path "C:\Qt" `
+            -Filter "Qt6Config.cmake" `
+            -Recurse `
+            -File `
+            -ErrorAction SilentlyContinue |
+            Select-Object -First 1
 
-      - name: Comprobar entorno
+          if ($null -eq $config) {
+            Write-Error "No se encontró Qt6Config.cmake dentro de C:\Qt"
+          }
+
+          $qtDir = $config.Directory.Parent.Parent.Parent.FullName
+
+          Write-Host "Qt encontrado en: $qtDir"
+          Write-Host "Qt6Config.cmake: $($config.FullName)"
+
+          "QTDIR=$qtDir" >> $env:GITHUB_ENV
+          "CMAKE_PREFIX_PATH=$qtDir" >> $env:GITHUB_ENV
+
+      - name: Comprobar herramientas y Qt
         shell: pwsh
         run: |
           cmake --version
           git --version
           where.exe cl
-          Test-Path "$env:QTDIR\bin\windeployqt.exe"
+
+          if (!(Test-Path "$env:QTDIR/bin/windeployqt.exe")) {
+            Write-Error "No se encontró windeployqt.exe"
+          }
+
+          if (!(Test-Path "$env:QTDIR/lib/cmake/Qt6/Qt6Config.cmake")) {
+            Write-Error "No se encontró Qt6Config.cmake"
+          }
 
       - name: Configurar
         shell: pwsh
